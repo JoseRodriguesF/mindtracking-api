@@ -1,10 +1,8 @@
-import banco from '../config/database.js';
-import { analisarTextoComAthena } from './chatController.js';
+import { DiarioService } from '../services/diarioService.js';
 
-// Criar uma nova entrada no diário
 export async function mandarDiario(req, res) {
     const { texto, titulo } = req.body;
-    const usuario_id = req.user.id;
+    const usuario_id = req.user?.id;
 
     if (!texto || typeof texto !== 'string' || texto.trim().length === 0) {
         return res.status(400).json({
@@ -20,94 +18,69 @@ export async function mandarDiario(req, res) {
         });
     }
 
+    if (titulo.length > 255) {
+        return res.status(400).json({
+            success: false,
+            message: 'O título do diário deve conter no máximo 255 caracteres'
+        });
+    }
+
+    if (texto.length > 10000) {
+        return res.status(400).json({
+            success: false,
+            message: 'O texto do diário deve conter no máximo 10000 caracteres'
+        });
+    }
+
+    if (!usuario_id) {
+        return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
+    }
+
     try {
-        // 1️⃣ Verificar se já existe diário na data atual para este usuário
-        const diarioExistente = await banco.query(
-            `SELECT id 
-             FROM diario 
-             WHERE usuario_id = $1
-             AND DATE(data_hora) = CURRENT_DATE`,
-            [usuario_id]
-        );
-
-        if (diarioExistente.rows.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Já existe um diário registrado para a data de hoje.'
-            });
-        }
-
-        // 2️⃣ Criar entrada
-        const novaEntrada = await banco.query(
-            `INSERT INTO diario (usuario_id, titulo, texto, emocao_predominante, intensidade_emocional, comentario_athena) 
-             VALUES ($1, $2, $3, $4, $5, $6) 
-             RETURNING id, usuario_id, data_hora, titulo, texto, emocao_predominante, intensidade_emocional, comentario_athena`,
-            [usuario_id, titulo, texto, null, null, null]
-        );
-
-        // 3️⃣ Analisar o texto
-        const analise = await analisarTextoComAthena(texto);
-
-        // 4️⃣ Atualizar com análise
-        const entradaAtualizada = await banco.query(
-            `UPDATE diario 
-             SET emocao_predominante = $1, intensidade_emocional = $2, comentario_athena = $3
-             WHERE id = $4
-             RETURNING id, usuario_id, data_hora, titulo, texto, emocao_predominante, intensidade_emocional, comentario_athena`,
-            [analise.emocao_predominante, analise.intensidade_emocional, analise.comentario_athena, novaEntrada.rows[0].id]
-        );
-
-        console.log(`Análise da Athena concluída para entrada ${novaEntrada.rows[0].id}`);
-
+        const novaEntrada = await DiarioService.mandarDiario(usuario_id, titulo, texto);
         return res.status(201).json({
             success: true,
             message: 'Entrada do diário criada com sucesso e análise da Athena concluída.',
-            entrada: entradaAtualizada.rows[0]
+            entrada: novaEntrada
         });
-
     } catch (error) {
         console.error('Erro ao criar entrada no diário:', error);
-        return res.status(500).json({
+        return res.status(400).json({
             success: false,
-            message: 'Erro interno do servidor ao criar entrada no diário',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Erro interno do servidor ao criar entrada no diário'
         });
     }
 }
-// Buscar todas as entradas do diário do usuário
+
 export async function buscarDiarios(req, res) {
-    const usuario_id = req.user.id;
+    const usuario_id = req.user?.id;
+    if (!usuario_id) {
+        return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
+    }
 
     try {
-        // Buscar todas as entradas
-        const entradas = await banco.query(
-            `SELECT data_hora, titulo, texto, emocao_predominante, intensidade_emocional, comentario_athena
-             FROM diario 
-             WHERE usuario_id = $1 
-             ORDER BY data_hora DESC`,
-            [usuario_id]
-        );
-
+        const entradas = await DiarioService.buscarDiarios(usuario_id);
         return res.status(200).json({
             success: true,
             message: 'Entradas do diário recuperadas com sucesso',
-            entradas: entradas.rows
+            entradas
         });
-
     } catch (error) {
         console.error('Erro ao buscar entradas do diário:', error);
         return res.status(500).json({
             success: false,
-            message: 'Erro interno do servidor ao buscar entradas do diário',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: 'Erro interno do servidor ao buscar entradas do diário'
         });
     }
 }
 
-// Buscar uma entrada específica do diário por ID
 export async function buscarDiarioPorId(req, res) {
-    const usuario_id = req.user.id;
+    const usuario_id = req.user?.id;
     const diario_id = req.params.id;
+
+    if (!usuario_id) {
+        return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
+    }
 
     if (!diario_id) {
         return res.status(400).json({
@@ -117,34 +90,17 @@ export async function buscarDiarioPorId(req, res) {
     }
 
     try {
-        // Buscar a entrada específica, garantindo que pertence ao usuário logado
-        const resultado = await banco.query(
-            `SELECT id, data_hora, titulo, texto, emocao_predominante, intensidade_emocional, comentario_athena
-             FROM diario 
-             WHERE id = $1 AND usuario_id = $2`,
-            [diario_id, usuario_id]
-        );
-
-        if (resultado.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Entrada do diário não encontrada ou não pertence ao usuário'
-            });
-        }
-
+        const entrada = await DiarioService.buscarDiarioPorId(usuario_id, diario_id);
         return res.status(200).json({
             success: true,
             message: 'Entrada do diário recuperada com sucesso',
-            entrada: resultado.rows[0]
+            entrada
         });
-
     } catch (error) {
         console.error('Erro ao buscar entrada do diário por ID:', error);
-        return res.status(500).json({
+        return res.status(404).json({
             success: false,
-            message: 'Erro interno do servidor ao buscar entrada do diário',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Entrada do diário não encontrada ou não pertence ao usuário'
         });
     }
 }
-

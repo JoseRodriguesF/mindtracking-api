@@ -2,8 +2,22 @@ import jwt from 'jsonwebtoken'
 
 const SECRET_KEY = process.env.JWT_KEY;
 
+const parseCookies = (cookieHeader) => {
+    const list = {};
+    if (!cookieHeader) return list;
+    cookieHeader.split(';').forEach(cookie => {
+        let [name, ...rest] = cookie.split('=');
+        name = name.trim();
+        if (!name) return;
+        const val = rest.join('=').trim();
+        list[name] = decodeURIComponent(val);
+    });
+    return list;
+};
+
 export function authenticate(req, res, next) {
-    const token = req.headers['authorization']?.split(' ')[1]; // O token geralmente é enviado como "Bearer <token>"
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies.token || req.headers['authorization']?.split(' ')[1];
 
     if (!token) {
         return res.status(403).json({ success: false, message: 'Token não fornecido' });

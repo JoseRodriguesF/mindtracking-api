@@ -12,15 +12,17 @@ dotenv.config();
 const { Pool } = pkg;
 
 // Cria uma nova instância de Pool para gerenciar conexões com o banco de dados
+const sslConfig = process.env.DB_SSL === 'true' || process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: false }
+    : false;
+
 const banco = new Pool({
     user: process.env.DB_USER, // Usuário do banco de dados (definido no .env)
     host: process.env.DB_HOST, // Host do banco de dados (definido no .env)
     database: process.env.DB_NAME, // Nome do banco de dados (definido no .env)
     password: process.env.DB_PASSWORD, // Senha do banco de dados (definido no .env)
-    port: process.env.PORTA ,// Porta do banco de dados (definido no .env)
-          ssl: {
-              rejectUnauthorized: false
-          },
+    port: process.env.PORTA, // Porta do banco de dados (definido no .env)
+    ssl: sslConfig,
 });
 
 banco.connect()

@@ -1,18 +1,16 @@
-// services/pdf.js - CORRETO
-import pool from '../config/database.js';
+import prisma from '../config/prisma.js';
 
 export async function relatorioUsuario(id) {
   // Aqui chamamos a função do banco
-  const query = "SELECT * FROM relatorio_usuario($1)";
-  const result = await pool.query(query, [id]);
+  const rows = await prisma.$queryRawUnsafe("SELECT * FROM relatorio_usuario($1)", Number(id));
 
-  console.log("🔍 Result do banco:", JSON.stringify(result.rows, null, 2));
+  console.log("🔍 Result do banco:", JSON.stringify(rows, null, 2));
 
-  if (result.rows.length === 0) {
+  if (rows.length === 0) {
     return null;
   }
   
-  const row = result.rows[0];
+  const row = rows[0];
 
   // Processar dados do usuário
   const dadosUsuario = {

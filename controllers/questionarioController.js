@@ -1,67 +1,42 @@
-// Importa a configuração do banco de dados
-import banco from '../config/database.js';
+import { QuestionarioService } from '../services/questionarioService.js';
 
-// Função para obter as correlações de tendências das respostas de um usuário
 export async function getCorrelacoesTendencias(req, res) {
     const { usuario_id } = req.params;
+    const authedUserId = req.user?.id;
   
     if (!usuario_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID do usuário não fornecido. Por favor, forneça um ID válido.'
-      });
+        return res.status(400).json({
+            success: false,
+            message: 'ID do usuário não fornecido. Por favor, forneça um ID válido.'
+        });
+    }
+
+    if (parseInt(usuario_id, 10) !== authedUserId) {
+        return res.status(403).json({
+            success: false,
+            message: 'Acesso negado. Você só pode acessar suas próprias informações.'
+        });
     }
   
     try {
-      // Verifica se o usuário existe
-      const usuarioExiste = await banco.query(
-        'SELECT id FROM usuarios WHERE id = $1',
-        [usuario_id]
-      );
-  
-      if (usuarioExiste.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Usuário não encontrado. Verifique se o ID está correto.'
+        const correlacoes = await QuestionarioService.getCorrelacoesTendencias(usuario_id);
+        return res.status(200).json({
+            success: true,
+            correlacoes,
+            message: 'Análise de tendências realizada com sucesso.'
         });
-      }
-  
-
-            // Chama a procedure para analisar tendências nas respostas
-            const resultado = await banco.query(
-                'SELECT * FROM analisar_tendencias_separadas($1)',
-                [usuario_id]
-            );
-
-            // Formata a saída incluindo pontuacao
-            const correlacoes = resultado.rows.map(row => ({
-                total_ocorrencias: row.total_ocorrencias,
-                classificacao: row.classificacao,
-                texto_alternativa: row.texto_alternativa,
-                texto_pergunta: row.texto_pergunta,
-                pontuacao: row.pontuacao // Adiciona pontuacao se presente na procedure
-            }));
-
-            // Retorna os resultados da análise
-            return res.status(200).json({
-                success: true,
-                correlacoes,
-                message: 'Análise de tendências realizada com sucesso.'
-            });
-  
     } catch (error) {
-      console.error("Erro ao analisar tendências:", error);
-      return res.status(500).json({
-        success: false,
-        message: 'Não foi possível analisar as tendências neste momento. Por favor, tente novamente mais tarde.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
+        console.error("Erro ao analisar tendências:", error);
+        return res.status(error.message.includes("não encontrado") ? 404 : 500).json({
+            success: false,
+            message: error.message || 'Não foi possível analisar as tendências neste momento. Por favor, tente novamente mais tarde.'
+        });
     }
-  }
+}
   
-// Função para obter a pontuação total de um usuário com base em suas respostas //ok
 export async function getPontuacaoUsuario(req, res) {
     const { usuario_id } = req.params;
+    const authedUserId = req.user?.id;
 
     if (!usuario_id) {
         return res.status(400).json({
@@ -70,199 +45,78 @@ export async function getPontuacaoUsuario(req, res) {
         });
     }
 
+    if (parseInt(usuario_id, 10) !== authedUserId) {
+        return res.status(403).json({
+            success: false,
+            message: 'Acesso negado. Você só pode acessar suas próprias informações.'
+        });
+    }
+
     try {
-        // Verifica se o usuário existe
-        const usuarioExiste = await banco.query('SELECT id FROM usuarios WHERE id = $1', [usuario_id]);
-        if (usuarioExiste.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuário não encontrado. Verifique se o ID está correto.'
-            });
-        }
-
-        // Consulta a pontuação total do usuário somando as pontuações das alternativas escolhidas
-        const resultado = await banco.query(`
-            SELECT 
-                COALESCE(SUM(a.pontuacao), 0) AS pontuacao_total,
-                COUNT(DISTINCT r.questionario_id) as total_questionarios
-            FROM respostas r
-            JOIN alternativas a ON r.alternativa_id = a.id
-            WHERE r.usuario_id = $1
-        `, [usuario_id]);
-
-        // Obtém a pontuação total e o número de questionários do resultado da consulta
-        const pontuacao = resultado.rows[0].pontuacao_total;
-        const totalQuestionarios = resultado.rows[0].total_questionarios;
-        const pontuacaoMaxima = totalQuestionarios * 40; // Máximo possível baseado no número de questionários
-        const nota_convertida = Math.min(Math.round((pontuacao / pontuacaoMaxima) * 10 * 100) / 100, 10);
-        
-        console.log('Pontuação bruta:', pontuacao);
-        console.log('Total de questionários:', totalQuestionarios);
-        console.log('Pontuação máxima possível:', pontuacaoMaxima);
-        console.log('Nota convertida:', nota_convertida);
-        
-        let nivel;
-
-        // Define o nível do usuário com base na nota convertida
-        if (nota_convertida <= 4.9) {
-            nivel = "Ruim";
-        } else if (nota_convertida <= 7.4) {
-            nivel = "Neutro";
-        } else {
-            nivel = "Bom";
-        }
-
-        // Retorna a nota convertida e o nível do usuário
+        const { nota, nivel } = await QuestionarioService.getPontuacaoUsuario(usuario_id);
         return res.status(200).json({
             success: true,
-            nota: nota_convertida,
-            nivel: nivel,
+            nota,
+            nivel,
             message: 'Pontuação calculada com sucesso.'
         });
-
     } catch (error) {
         console.error("Erro ao calcular pontuação:", error);
-        return res.status(500).json({
+        return res.status(error.message.includes("não encontrado") ? 404 : 500).json({
             success: false,
-            message: 'Não foi possível calcular sua pontuação neste momento. Por favor, tente novamente mais tarde.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Não foi possível calcular sua pontuação neste momento. Por favor, tente novamente mais tarde.'
         });
     }
 }
 
-// Função para obter todas as perguntas e suas alternativas//ok
 export async function getPerguntas(req, res) {
     try {
-        // Por padrão, considera-se questionário inicial (buscar perguntas 1..10).
-        // Se o cliente passar `?questionario_inicial=false` na query, retornamos todas as perguntas.
         const isQuestionarioInicial = req.query.questionario_inicial !== 'false';
-
-        // Monta dinamicamente a cláusula WHERE para garantir que, por padrão,
-        // apenas as perguntas 1 a 10 sejam retornadas.
-        const whereClause = isQuestionarioInicial ? 'WHERE p.id BETWEEN 1 AND 10' : '';
-
-        // Consulta as perguntas e suas alternativas no banco de dados
-        const perguntas = await banco.query(`
-            SELECT p.id, p.texto, 
-                   json_agg(json_build_object(
-                       'id', a.id, 
-                       'texto', a.texto, 
-                       'pontuacao', a.pontuacao
-                   )) as alternativas
-            FROM perguntas p
-            JOIN alternativas a ON p.id = a.pergunta_id
-            ${whereClause}
-            GROUP BY p.id
-            ORDER BY p.id
-        `);
+        const perguntas = await QuestionarioService.getPerguntas(isQuestionarioInicial);
         
-        if (perguntas.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Nenhuma pergunta encontrada para este tipo de questionário.'
-            });
-        }
-        
-        // Retorna as perguntas e suas alternativas
         return res.status(200).json({
             success: true,
-            perguntas: perguntas.rows,
+            perguntas,
             message: 'Perguntas carregadas com sucesso.'
         });
     } catch (error) {
         console.error('Erro ao buscar perguntas:', error);
         return res.status(500).json({ 
             success: false, 
-            message: 'Não foi possível carregar as perguntas neste momento. Por favor, tente novamente mais tarde.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Não foi possível carregar as perguntas neste momento. Por favor, tente novamente mais tarde.'
         });
     }
 }
 
-// Função para salvar as respostas de um usuário//ok
 export async function salvarRespostas(req, res) {
-    const { usuario_id, respostas } = req.body;
+    const usuario_id = req.user?.id;
+    const { respostas } = req.body;
 
     if (!usuario_id || !respostas || !Array.isArray(respostas) || respostas.length === 0) {
         return res.status(400).json({
             success: false,
-            message: 'Dados inválidos. Por favor, forneça um ID de usuário válido e pelo menos uma resposta.'
+            message: 'Dados inválidos. Pelo menos uma resposta deve ser fornecida.'
         });
     }
 
     try {
-        // Verifica se o usuário existe
-        const usuarioExiste = await banco.query('SELECT id, questionario_inicial FROM usuarios WHERE id = $1', [usuario_id]);
-        if (usuarioExiste.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuário não encontrado. Verifique se o ID está correto.'
-            });
-        }
-
-        // Verifica se o usuário já respondeu o questionário inicial
-        if (usuarioExiste.rows[0].questionario_inicial) {
-            return res.status(400).json({
-                success: false,
-                message: 'Você já respondeu o questionário inicial. Não é possível enviar novas respostas.'
-            });
-        }
-
-        // Cria um novo questionário para o usuário no banco de dados
-        const questionario = await banco.query(
-            'INSERT INTO questionarios (usuario_id, tipo) VALUES ($1, $2) RETURNING id',
-            [usuario_id, 'Inicial']
-        );
-        const questionario_id = questionario.rows[0].id;
-
-        // Insere cada resposta do usuário no banco de dados
-        for (const resposta of respostas) {
-            if (!resposta.pergunta_id || !resposta.alternativa_id) {
-                throw new Error('Dados de resposta incompletos');
-            }
-
-            await banco.query(
-                `INSERT INTO respostas 
-                (usuario_id, pergunta_id, alternativa_id, questionario_id) 
-                VALUES ($1, $2, $3, $4)`,
-                [usuario_id, resposta.pergunta_id, resposta.alternativa_id, questionario_id]
-            );
-        }
-
-        // Atualiza o status do questionário inicial do usuário para concluído
-        await banco.query(
-            'UPDATE usuarios SET questionario_inicial = TRUE WHERE id = $1',
-            [usuario_id]
-        );
-
-        // Retorna uma resposta de sucesso
+        await QuestionarioService.salvarRespostas(usuario_id, respostas);
         return res.status(200).json({
             success: true,
             message: 'Questionário respondido com sucesso! Obrigado por sua participação.'
         });
-
     } catch (error) {
         console.error('Erro ao salvar respostas:', error);
-        
-        // Verifica se é um erro de violação de chave estrangeira
-        if (error.code === '23503') {
-            return res.status(400).json({
-                success: false,
-                message: 'Dados inválidos. Verifique se as perguntas e alternativas existem.'
-            });
-        }
-
-        return res.status(500).json({ 
+        return res.status(400).json({ 
             success: false, 
-            message: 'Não foi possível salvar suas respostas neste momento. Por favor, tente novamente mais tarde.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Não foi possível salvar suas respostas neste momento. Por favor, tente novamente mais tarde.'
         });
     }
 }
 
-// Função para obter o histórico de questionários do usuário (data e pontuação)
 export async function getHistoricoQuestionarios(req, res) {
     const { usuario_id } = req.params;
+    const authedUserId = req.user?.id;
 
     if (!usuario_id) {
         return res.status(400).json({ 
@@ -270,61 +124,33 @@ export async function getHistoricoQuestionarios(req, res) {
             message: 'ID do usuário não fornecido. Por favor, forneça um ID válido.' 
         });
     }
+
+    if (parseInt(usuario_id, 10) !== authedUserId) {
+        return res.status(403).json({
+            success: false,
+            message: 'Acesso negado. Você só pode acessar suas próprias informações.'
+        });
+    }
     
     try {
-        // Verifica se o usuário existe
-        const usuarioExiste = await banco.query('SELECT id FROM usuarios WHERE id = $1', [usuario_id]);
-        if (usuarioExiste.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuário não encontrado. Verifique se o ID está correto.'
-            });
-        }
-
-        const resultado = await banco.query(`
-            SELECT 
-                q.id AS questionario_id,
-                q.data,
-                q.tipo,
-                COALESCE(SUM(a.pontuacao), 0) AS pontuacao,
-                ROUND((COALESCE(SUM(a.pontuacao), 0) / 40.0) * 10, 2) AS nota_convertida
-            FROM 
-                questionarios q
-            LEFT JOIN respostas r ON r.questionario_id = q.id
-            LEFT JOIN alternativas a ON r.alternativa_id = a.id
-            WHERE 
-                q.usuario_id = $1
-            GROUP BY 
-                q.id, q.data, q.tipo
-            ORDER BY 
-                q.data DESC;
-        `, [usuario_id]);
-
-        if (resultado.rows.length === 0) {
-            return res.status(200).json({
-                success: true,
-                message: 'Nenhum questionário encontrado para este usuário.',
-                historico: []
-            });
-        }
-
+        const historico = await QuestionarioService.getHistoricoQuestionarios(usuario_id);
         return res.status(200).json({
             success: true,
             message: 'Histórico de questionários carregado com sucesso.',
-            historico: resultado.rows
+            historico
         });
     } catch (error) {
         console.error("Erro ao buscar histórico de questionários:", error);
-        return res.status(500).json({ 
+        return res.status(error.message.includes("não encontrado") ? 404 : 500).json({ 
             success: false, 
-            message: 'Não foi possível carregar seu histórico de questionários neste momento. Por favor, tente novamente mais tarde.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Não foi possível carregar seu histórico de questionários neste momento. Por favor, tente novamente mais tarde.'
         });
     }
 }
 
 export async function getEstatisticasUsuario(req, res) {
     const { usuario_id } = req.params;
+    const authedUserId = req.user?.id;
 
     if (!usuario_id) {
         return res.status(400).json({
@@ -333,50 +159,25 @@ export async function getEstatisticasUsuario(req, res) {
         });
     }
 
+    if (parseInt(usuario_id, 10) !== authedUserId) {
+        return res.status(403).json({
+            success: false,
+            message: 'Acesso negado. Você só pode acessar suas próprias informações.'
+        });
+    }
+
     try {
-        // Verifica se o usuário existe e obtém sua data de nascimento
-        const usuarioExiste = await banco.query('SELECT id, data_nascimento FROM usuarios WHERE id = $1', [usuario_id]);
-        if (usuarioExiste.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuário não encontrado. Verifique se o ID está correto.'
-            });
-        }
-
-        // Obtém o número total de questionários respondidos
-        const questionarios = await banco.query(`
-            SELECT COUNT(*) as total_questionarios
-            FROM questionarios
-            WHERE usuario_id = $1
-        `, [usuario_id]);
-
-        // Calcula a idade do usuário
-        const dataNascimento = new Date(usuarioExiste.rows[0].data_nascimento);
-        const hoje = new Date();
-        let idade = hoje.getFullYear() - dataNascimento.getFullYear();
-        const mesAtual = hoje.getMonth();
-        const mesNascimento = dataNascimento.getMonth();
-        
-        // Ajusta a idade se ainda não fez aniversário este ano
-        if (mesAtual < mesNascimento || (mesAtual === mesNascimento && hoje.getDate() < dataNascimento.getDate())) {
-            idade--;
-        }
-
+        const estatisticas = await QuestionarioService.getEstatisticasUsuario(usuario_id);
         return res.status(200).json({
             success: true,
             message: 'Estatísticas do usuário obtidas com sucesso.',
-            estatisticas: {
-                total_questionarios: parseInt(questionarios.rows[0].total_questionarios),
-                idade: idade
-            }
+            estatisticas
         });
-
     } catch (error) {
         console.error('Erro ao obter estatísticas do usuário:', error);
-        return res.status(500).json({
+        return res.status(error.message.includes("não encontrado") ? 404 : 500).json({
             success: false,
-            message: 'Ocorreu um erro ao obter as estatísticas do usuário. Por favor, tente novamente mais tarde.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Ocorreu um erro ao obter as estatísticas do usuário. Por favor, tente novamente mais tarde.'
         });
     }
 }

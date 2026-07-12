@@ -7,6 +7,11 @@ export async function gerarRelatorio(req, res) {
     const { id } = req.params;
     console.log("📋 ID recebido:", id);
 
+    const authedUserId = req.user?.id;
+    if (parseInt(id, 10) !== authedUserId) {
+      return res.status(403).json({ success: false, message: "Acesso negado. Você só pode exportar seu próprio relatório." });
+    }
+
     const dados = await relatorioUsuario(id);
     
     if (!dados) {

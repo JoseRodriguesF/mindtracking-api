@@ -3,7 +3,8 @@ import OpenAI from 'openai';
 // Importa o pacote dotenv para carregar variáveis de ambiente de um arquivo .env
 import dotenv from 'dotenv';
 
-// Carrega as variáveis de ambiente do arquivo .env localizado na pasta config
+// Carrega as variáveis de ambiente do arquivo .env da raiz e da pasta config como fallback
+dotenv.config();
 dotenv.config({ path: "./config/.env" });
 
 // Cria uma instância do cliente IA usando a chave de API definida nas variáveis de ambiente

@@ -8,7 +8,7 @@ yarn.lock
 pnpm-lock.yaml
 
 # Configurações de ambiente
-.env
+.env*
 
 # Logs
 *.log

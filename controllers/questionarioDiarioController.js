@@ -1,8 +1,8 @@
-import banco from '../config/database.js';
+import { QuestionarioService } from '../services/questionarioService.js';
 
-// Verifica se o usuário já respondeu o questionário hoje//ok
 export async function verificarQuestionarioDiario(req, res) {
- const { usuario_id } = req.params;
+  const { usuario_id } = req.params;
+  const authedUserId = req.user?.id;
 
   if (!usuario_id) {
     return res.status(400).json({
@@ -11,33 +11,15 @@ export async function verificarQuestionarioDiario(req, res) {
     });
   }
 
+  if (parseInt(usuario_id, 10) !== authedUserId) {
+    return res.status(403).json({
+      success: false,
+      message: 'Acesso negado. Você só pode acessar suas próprias informações.'
+    });
+  }
+
   try {
-    // Verifica se o usuário existe
-    const usuarioExiste = await banco.query(
-      'SELECT id FROM usuarios WHERE id = $1',
-      [usuario_id]
-    );
-
-    if (usuarioExiste.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Usuário não encontrado. Verifique se o ID está correto.'
-      });
-    }
-
-    // Verifica se o usuário respondeu qualquer questionário hoje (considerando fuso UTC)
-    const resultado = await banco.query(
-  `
-  SELECT id FROM questionarios
-  WHERE usuario_id = $1
-    AND data >= (CURRENT_DATE AT TIME ZONE 'UTC')
-    AND data < ((CURRENT_DATE + INTERVAL '1 day') AT TIME ZONE 'UTC')
-  `,
-  [usuario_id]
-);
-
-    const ja_respondido = resultado.rows.length > 0;
-
+    const ja_respondido = await QuestionarioService.verificarQuestionarioDiario(usuario_id);
     return res.status(200).json({
       success: true,
       ja_respondido,
@@ -47,52 +29,16 @@ export async function verificarQuestionarioDiario(req, res) {
     });
   } catch (error) {
     console.error('Erro ao verificar questionário:', error);
-    return res.status(500).json({
+    return res.status(error.message.includes("não encontrado") ? 404 : 500).json({
       success: false,
-      message: 'Não foi possível verificar o status dos questionários hoje. Por favor, tente novamente mais tarde.',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: error.message || 'Não foi possível verificar o status dos questionários hoje. Por favor, tente novamente mais tarde.'
     });
   }
 }
-// Obtém as perguntas do questionário diário (ID >= 11) de forma aleatória
+
 export async function getPerguntasDiarias(req, res) {
     try {
-        // Primeiro, obtém todas as perguntas disponíveis
-        const todasPerguntas = await banco.query(`
-            SELECT p.id, p.texto, 
-                   json_agg(json_build_object(
-                       'id', a.id, 
-                       'texto', a.texto, 
-                       'pontuacao', a.pontuacao
-                   )) as alternativas
-            FROM perguntas p
-            JOIN alternativas a ON p.id = a.pergunta_id
-            WHERE p.id >= 11
-            GROUP BY p.id
-            ORDER BY p.id
-        `);
-
-        if (todasPerguntas.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Nenhuma pergunta encontrada para o questionário diário.'
-            });
-        }
-
-        // Embaralha as perguntas aleatoriamente
-        const perguntasEmbaralhadas = todasPerguntas.rows.sort(() => Math.random() - 0.5);
-        
-        // Seleciona no máximo 10 perguntas
-        const perguntasSelecionadas = perguntasEmbaralhadas.slice(0, 10);
-
-        // Verifica se temos perguntas suficientes
-        if (perguntasSelecionadas.length < 5) {
-            return res.status(500).json({
-                success: false,
-                message: 'Não há perguntas suficientes disponíveis para o questionário diário.'
-            });
-        }
-        
+        const perguntasSelecionadas = await QuestionarioService.getPerguntasDiarias();
         return res.status(200).json({
             success: true,
             perguntas: perguntasSelecionadas,
@@ -103,24 +49,22 @@ export async function getPerguntasDiarias(req, res) {
         console.error('Erro ao buscar perguntas diárias:', error);
         return res.status(500).json({
             success: false,
-            message: 'Não foi possível carregar as perguntas do questionário diário. Por favor, tente novamente mais tarde.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message || 'Não foi possível carregar as perguntas do questionário diário. Por favor, tente novamente mais tarde.'
         });
     }
 }
 
-// Salva as respostas do questionário diário
 export async function salvarRespostasDiarias(req, res) {
-    const { usuario_id, respostas } = req.body;
+    const usuario_id = req.user?.id;
+    const { respostas } = req.body;
 
     if (!usuario_id || !respostas || !Array.isArray(respostas) || respostas.length === 0) {
         return res.status(400).json({
             success: false,
-            message: 'Dados inválidos. Por favor, forneça um ID de usuário válido e pelo menos uma resposta.'
+            message: 'Dados inválidos. Pelo menos uma resposta deve ser fornecida.'
         });
     }
 
-    // Verifica se o número de respostas está dentro do limite
     if (respostas.length > 10) {
         return res.status(400).json({
             success: false,
@@ -129,76 +73,16 @@ export async function salvarRespostasDiarias(req, res) {
     }
 
   try {
-    const usuarioExiste = await banco.query('SELECT id FROM usuarios WHERE id = $1', [usuario_id]);
-    if (usuarioExiste.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Usuário não encontrado. Verifique se o ID está correto.'
-      });
-    }
-
-    const verificar = await banco.query(`
-      SELECT id FROM questionarios
-      WHERE usuario_id = $1 AND data = (CURRENT_DATE AT TIME ZONE 'UTC')
-    `, [usuario_id]);
-
-    if (verificar.rows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Você já respondeu o questionário hoje. Volte amanhã para responder novamente.'
-      });
-    }
-
-    // Inserção usando data com fuso UTC
-    const questionario = await banco.query(
-      'INSERT INTO questionarios (usuario_id, data, tipo) VALUES ($1, (CURRENT_DATE AT TIME ZONE \'UTC\'), $2) RETURNING id',
-      [usuario_id, 'Diario']
-    );
-    const questionario_id = questionario.rows[0].id;
-
-        // Insere cada resposta
-        for (const resposta of respostas) {
-      if (!resposta.pergunta_id || !resposta.alternativa_id) {
-        throw new Error('Dados de resposta incompletos');
-      }
-      await banco.query(
-        `INSERT INTO respostas (usuario_id, pergunta_id, alternativa_id, questionario_id) 
-         VALUES ($1, $2, $3, $4)`,
-        [usuario_id, resposta.pergunta_id, resposta.alternativa_id, questionario_id]
-      );
-    }
-
+    await QuestionarioService.salvarRespostasDiarias(usuario_id, respostas);
     return res.status(200).json({
       success: true,
       message: 'Questionário diário respondido com sucesso! Obrigado por sua participação.'
     });
-
   } catch (error) {
     console.error('Erro ao salvar respostas diárias:', error);
-        
-        // Verifica se é um erro de violação de chave estrangeira
-        if (error.code === '23503') {
-            return res.status(400).json({
-                success: false,
-                message: 'Dados inválidos. Verifique se as perguntas e alternativas existem.'
-            });
-        }
-
-        // Verifica se é um erro de violação de constraint
-        if (error.code === '23514') {
-            return res.status(400).json({
-                success: false,
-                message: 'Tipo de questionário inválido. Por favor, tente novamente.'
-            });
-        }
-
-        return res.status(500).json({
-            success: false,
-            message: 'Não foi possível salvar suas respostas do questionário diário. Por favor, tente novamente mais tarde.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-
-} 
-
-
+    return res.status(400).json({
+        success: false,
+        message: error.message || 'Não foi possível salvar suas respostas do questionário diário. Por favor, tente novamente mais tarde.'
+    });
+  }
+}

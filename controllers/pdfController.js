@@ -23,8 +23,6 @@ export async function gerarRelatorio(req, res) {
     // Logs para debug
     console.log("👤 DadosUsuario:", dadosUsuario);
     console.log("📝 Quantidade de diários:", relatorio.diarios?.length);
-    console.log("📝 Quantidade de questionários:", relatorio.questionarios?.length);
-    console.log("📝 Questionário inicial:", relatorio.questionario_inicial);
     console.log("📝 Quantidade de diagnósticos:", relatorio.diagnosticos?.length);
 
     // Gerar PDF

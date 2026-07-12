@@ -42,7 +42,6 @@ export class AuthService {
                 data_nascimento: new Date(data_nascimento),
                 telefone,
                 genero,
-                questionario_inicial: false,
                 email_verificado: true
             }
         });
@@ -58,7 +57,6 @@ export class AuthService {
                 data_nascimento: novoUsuario.data_nascimento,
                 telefone: novoUsuario.telefone,
                 genero: novoUsuario.genero,
-                questionario_inicial: novoUsuario.questionario_inicial,
                 email_verificado: true
             }
         };
@@ -86,7 +84,6 @@ export class AuthService {
                 id: user.id,
                 nome: user.nome,
                 email: user.email,
-                questionario_inicial: user.questionario_inicial,
                 email_verificado: true
             }
         };

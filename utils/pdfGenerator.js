@@ -50,47 +50,7 @@ export function gerarPDF(dadosUsuario, relatorio) {
   }
   doc.moveDown();
 
-  // Questionários
-  doc.text("Questionários Respondidos:", { underline: true }).moveDown(0.5);
-  if (Array.isArray(relatorio?.questionarios) && relatorio.questionarios.length > 0) {
-    const medias = [];
-    
-    relatorio.questionarios.forEach((questionario, index) => {
-      if (typeof questionario === 'object') {
-        const media = calcularMediaQuestionario(questionario);
-        medias.push(media);
-        
-        doc.text(`Questionário ${index + 1} - ${formatarData(questionario.data)}:`, { continued: false });
-        doc.text(`Nota Média: ${media.toFixed(1)}/10`, { indent: 20 });
-        
-        // Mostrar respostas se disponíveis
-        if (questionario.respostas && typeof questionario.respostas === 'object') {
-          Object.entries(questionario.respostas).forEach(([pergunta, resposta]) => {
-            doc.text(`${pergunta}: ${resposta}`, { indent: 30 });
-          });
-        } else if (questionario.nota) {
-          doc.text(`Nota: ${questionario.nota}/10`, { indent: 30 });
-        }
-      } else {
-        doc.text(`Questionário ${index + 1}: ${questionario}`, { indent: 20 });
-      }
-      doc.moveDown(0.5);
-    });
-    
-    // Média geral
-    if (medias.length > 0) {
-      const mediaGeral = medias.reduce((a, b) => a + b, 0) / medias.length;
-      doc.text(`Média Geral: ${mediaGeral.toFixed(1)}/10`, { indent: 20, underline: true });
-    }
-  } else {
-    doc.text("Nenhum questionário respondido.", { indent: 20 });
-  }
-  doc.moveDown();
 
-  // Questionário Inicial
-  doc.text("Questionário Inicial:", { underline: true });
-  doc.text(relatorio?.questionario_inicial ? "Respondido" : "Não respondido", { indent: 20 });
-  doc.moveDown();
 
   // Diagnósticos
   doc.text("Diagnósticos:", { underline: true });
@@ -123,25 +83,4 @@ function formatarData(data) {
     return String(data);
   }
 }
-
-function calcularMediaQuestionario(questionario) {
-  if (questionario.media !== undefined && questionario.media !== null) {
-    return Number(questionario.media);
-  }
-  
-  if (questionario.nota !== undefined && questionario.nota !== null) {
-    return Number(questionario.nota);
-  }
-  
-  if (questionario.respostas && typeof questionario.respostas === 'object') {
-    const valores = Object.values(questionario.respostas)
-      .filter(val => typeof val === 'number' && !isNaN(val))
-      .map(val => Number(val));
-    
-    if (valores.length > 0) {
-      return valores.reduce((a, b) => a + b, 0) / valores.length;
-    }
-  }
-  
-  return 0;
-}
+

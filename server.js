@@ -8,7 +8,6 @@ import { fileURLToPath } from 'url';
 
 import chatRoutes from './routes/chatRoutes.js';
 import authRoutes from './routes/authRoutes.js';
-import questionarioRoutes from './routes/questionarioRoutes.js';
 import diarioRoutes from './routes/diarioRoutes.js'; 
 import relatorioRoutes from './routes/relatorioRoutes.js';
 
@@ -39,7 +38,6 @@ app.use(express.static("public"));
 
 app.use('/api', chatRoutes);
 app.use('/auth', authRoutes);
-app.use('/questionario', questionarioRoutes);
 app.use('/api/diario', diarioRoutes);
 app.use("/", relatorioRoutes)
 

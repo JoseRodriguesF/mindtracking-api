@@ -18,7 +18,6 @@ model Usuario {
   data_nascimento       DateTime       @db.Date
   telefone              String?        @db.VarChar(50)
   genero                String?        @db.VarChar(50)
-  questionario_inicial  Boolean        @default(false)
   email_verificado      Boolean        @default(false)
   codigo_verificacao    String?        @db.VarChar(50)
   codigo_recuperacao    String?        @db.VarChar(50)
@@ -26,8 +25,6 @@ model Usuario {
 
   diagnosticos          Diagnostico[]
   diarios               Diario[]
-  questionarios         Questionario[]
-  respostas             Resposta[]
 
   @@map("usuarios")
 }
@@ -58,51 +55,3 @@ model Diario {
   @@map("diario")
 }
 
-model Questionario {
-  id         Int        @id @default(autoincrement())
-  usuario_id Int
-  data       DateTime   @default(now()) @db.Timestamp
-  tipo       String     @db.VarChar(50) // 'Inicial' ou 'Diario'
-
-  usuario    Usuario    @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
-  respostas  Resposta[]
-
-  @@map("questionarios")
-}
-
-model Pergunta {
-  id           Int           @id
-  texto        String        @db.Text
-
-  alternativas Alternativa[]
-  respostas    Resposta[]
-
-  @@map("perguntas")
-}
-
-model Alternativa {
-  id          Int        @id @default(autoincrement())
-  pergunta_id Int
-  texto       String     @db.Text
-  pontuacao   Int
-
-  pergunta    Pergunta   @relation(fields: [pergunta_id], references: [id], onDelete: Cascade)
-  respostas   Resposta[]
-
-  @@map("alternativas")
-}
-
-model Resposta {
-  id              Int          @id @default(autoincrement())
-  usuario_id      Int
-  pergunta_id     Int
-  alternativa_id  Int
-  questionario_id Int
-
-  usuario         Usuario      @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
-  pergunta        Pergunta     @relation(fields: [pergunta_id], references: [id], onDelete: Cascade)
-  alternativa     Alternativa  @relation(fields: [alternativa_id], references: [id], onDelete: Cascade)
-  questionario    Questionario @relation(fields: [questionario_id], references: [id], onDelete: Cascade)
-
-  @@map("respostas")
-}
